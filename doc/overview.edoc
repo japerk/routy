@@ -1,10 +1,21 @@
 @title Yaws Routing
 @author Jacob Perkins
-@doc Routy does url dispatching using an embedded Yaws HTTP server. Urls and dispatch methods are defined with the application environment variable `routes'. For example, in a system config file:
+@doc Routy does url dispatching using an embedded Yaws HTTP server. Urls and dispatch methods are defined with `route_mods'. For example, in a system config file:
 
 <code>
 {yaws, [{embedded, true}]}.
-{routy, [{routes, [{"/example/url", [{'GET', {module, get_function, args_spec}}, {'POST', {module, post_function, args_spec}}]}]}]}.
+{routy, [{route_mods, [my_route_mod]}]}.
 </code>
 
-Routy also depends on {@link elib} and uses a {@link gen_cache} server, registered as `routy_cache', for simple caching.
+The route mod should then export a function called `routes' that looks like this:
+
+<code>
+routes() -> [
+	{"/my/url", [
+		{'GET', {?MODULE, get_function, [{id, string}]}},
+		{'POST', {?MODULE, post_function, json}}
+	]}
+].
+</code>
+
+Routy depends on `elib'.
