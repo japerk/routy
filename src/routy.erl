@@ -8,8 +8,8 @@
 -behaviour(application).
 
 -include("routy.hrl").
--include_lib("yaws/include/yaws.hrl").
--include_lib("yaws/include/yaws_api.hrl").
+-include_lib("$YAWS_INC/include/yaws.hrl").
+-include_lib("$YAWS_INC/include/yaws_api.hrl").
 
 -export([start/2, stop/1, config_change/3, behaviour_info/1]).
 -export([auth/2, out/1]).
@@ -57,7 +57,7 @@ config_change(_Changed, _New, _Removed) ->
 		 {listen, {0, 0, 0, 0}}, {port, proplists:get_value(port, Props)},
 		 {servername, proplists:get_value(server_name, Props)},
 		 {authdirs, Auths},
-		 {appmods, [{Path, routy} || Path <- RoutePaths]}],
+		 {appmods, [{"/", routy}]}],
 	
 	application:stop(yaws),
 	application:unload(yaws),
@@ -94,33 +94,48 @@ out(A) ->
 out_routes(A) ->
 	{ok, Routes} = application:get_env(routy, routes),
 	
-	case proplists:get_value(A#arg.server_path, Routes) of
-		undefined ->
+	MatchingUrl = lists:dropwhile(
+								fun(Url) ->
+
+										case re:run(A#arg.server_path, Url) of
+													nomatch -> true;
+													_ -> false
+										end
+		
+								end,
+								proplists:get_keys(Routes)
+								),
+
+	io:format("Matching urls: ~p~n", [MatchingUrl]),
+
+	case MatchingUrl of
+		[] ->
 			error_logger:error_report([{not_found, A#arg.server_path}]),
 			{status, 404};
-		Methods ->
-			out_method(A, (A#arg.req)#http_request.method, Methods)
+		[FirstMatchedUrl | RemainingUrls] ->
+			Methods = proplists:get_value(FirstMatchedUrl, Routes),
+			out_method(A, (A#arg.req)#http_request.method, {FirstMatchedUrl, Methods})
 	end.
 
-out_method(A, Method, Methods) ->
+out_method(A, Method, {UrlSpec , Methods}) ->
 	case proplists:get_value(Method, Methods) of
 		undefined ->
 			error_logger:error_report([{not_allowed, Method}, {methods, Methods}]),
 			{status, 405};
 		MFA ->
-			out_vars(A, Method, MFA)
+			out_vars(A, Method, UrlSpec, MFA)
 	end.
 
-out_vars(A, 'GET', MFA) ->
-	try_args('GET', MFA, yaws_api:parse_query(A));
-out_vars(A, 'POST', {Module, Function, json}) ->
+out_vars(A, 'GET', UrlSpec, MFA) ->
+	try_args('GET', MFA, routy_util:parse_url(A#arg.server_path, UrlSpec) ++ yaws_api:parse_query(A));
+out_vars(A, 'POST', UrlSpec, {Module, Function, json}) ->
 	case json:decode_string(binary_to_list(A#arg.clidata)) of
 		{error, Err} -> http_error(400, Err);
 		{ok, Json} -> try_route('POST', Module, Function, [Json])
 	end;
-out_vars(A, 'POST', MFA) ->
+out_vars(A, 'POST', UrlSpec, MFA) ->
 	try_args('POST', MFA, yaws_api:parse_query(A) ++ yaws_api:parse_post(A));
-out_vars(_, Method, MFA) ->
+out_vars(_, Method, UrlSpec, MFA) ->
 	error_logger:error_report([{not_implemented, Method}, MFA]),
 	{status, 501}.
 

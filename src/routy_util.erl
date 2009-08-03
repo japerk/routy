@@ -14,7 +14,9 @@
 	stringify/1,
 	structify/1,
 	render_tmpl/2,
-	compile_templates/1
+	compile_templates/1,
+	extract_named_subpatterns/1,
+	parse_url/2
 ]).
 
 %% @doc Encode url props.
@@ -109,3 +111,31 @@ compile_templates(App) when is_atom(App) ->
 	lists:foreach(F, Templates);
 compile_templates(App) ->
 	lists:foreach(fun compile_templates/1, App).
+
+
+extract_named_subpatterns(RegExp) ->
+	case re:run(RegExp, "\\?<([A-Za-z_0-9]+)>", [ungreedy, {capture, all_but_first}, global] ) of
+			{match, Captured}  -> [ string:substr(RegExp, Start+1, Length) || [{Start, Length}] <- Captured];
+			_ -> []
+	end.
+
+
+parse_url(Url, UrlSpec) ->
+	SubPatterns = extract_named_subpatterns(UrlSpec),
+
+	case re:run(Url, UrlSpec, [{capture, SubPatterns}, global] ) of
+			{match, Captured}  -> 
+											Zipped = lists:zip(SubPatterns, lists:flatten(Captured)),
+											
+											lists:foldl(
+															fun({_, {Start, Length}}, AccIn) when Start =:= -1 andalso Length =:= 0 ->
+																			AccIn;
+																({Pattern, {Start, Length}}, AccIn) ->
+																			[{Pattern, string:substr(Url, Start+1, Length)} | AccIn]
+															end,
+															[],
+															Zipped
+															);
+			_ -> []
+	end.
+	
