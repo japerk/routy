@@ -31,9 +31,8 @@ config_change(_Changed, _New, _Removed) ->
 	{ok, ID} = application:get_env(routy, id),
 	Props = application:get_all_env(routy),
 	
-	P = fun(Mod, Paths) ->
-			Routes = Mod:routes(),
-			{Routes, proplists:get_keys(Routes) ++ Paths}
+	P = fun(Mod) ->
+			Mod:routes()
 		end,
 	
 	% TODO: routes need to be queried on demand, not created at start or app
@@ -42,7 +41,7 @@ config_change(_Changed, _New, _Removed) ->
 	
 	% recreate route paths and full route specs from route modules
 	RouteMods = proplists:get_value(route_mods, Props, []),
-	{AllRoutes, RoutePaths} = lists:mapfoldl(P, [], RouteMods),
+	AllRoutes = lists:map(P, RouteMods),
 	ok = application:set_env(routy, routes, lists:flatten(AllRoutes)),
 	
 	{ok, Authdirs} = application:get_env(routy, authdirs),
@@ -112,7 +111,7 @@ out_routes(A) ->
 		[] ->
 			error_logger:error_report([{not_found, A#arg.server_path}]),
 			{status, 404};
-		[FirstMatchedUrl | RemainingUrls] ->
+		[FirstMatchedUrl | _] ->
 			Methods = proplists:get_value(FirstMatchedUrl, Routes),
 			out_method(A, (A#arg.req)#http_request.method, {FirstMatchedUrl, Methods})
 	end.
@@ -128,14 +127,14 @@ out_method(A, Method, {UrlSpec , Methods}) ->
 
 out_vars(A, 'GET', UrlSpec, MFA) ->
 	try_args('GET', MFA, routy_util:parse_url(A#arg.server_path, UrlSpec) ++ yaws_api:parse_query(A));
-out_vars(A, 'POST', UrlSpec, {Module, Function, json}) ->
+out_vars(A, 'POST', _, {Module, Function, json}) ->
 	case json:decode_string(binary_to_list(A#arg.clidata)) of
 		{error, Err} -> http_error(400, Err);
 		{ok, Json} -> try_route('POST', Module, Function, [Json])
 	end;
 out_vars(A, 'POST', UrlSpec, MFA) ->
 	try_args('POST', MFA, routy_util:parse_url(A#arg.server_path, UrlSpec) ++ yaws_api:parse_query(A) ++ yaws_api:parse_post(A));
-out_vars(_, Method, UrlSpec, MFA) ->
+out_vars(_, Method, _, MFA) ->
 	error_logger:error_report([{not_implemented, Method}, MFA]),
 	{status, 501}.
 
