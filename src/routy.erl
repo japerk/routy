@@ -134,7 +134,7 @@ out_vars(A, 'POST', UrlSpec, {Module, Function, json}) ->
 		{ok, Json} -> try_route('POST', Module, Function, [Json])
 	end;
 out_vars(A, 'POST', UrlSpec, MFA) ->
-	try_args('POST', MFA, yaws_api:parse_query(A) ++ yaws_api:parse_post(A));
+	try_args('POST', MFA, routy_util:parse_url(A#arg.server_path, UrlSpec) ++ yaws_api:parse_query(A) ++ yaws_api:parse_post(A));
 out_vars(_, Method, UrlSpec, MFA) ->
 	error_logger:error_report([{not_implemented, Method}, MFA]),
 	{status, 501}.
