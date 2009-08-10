@@ -32,7 +32,13 @@ config_change(_Changed, _New, _Removed) ->
 	Props = application:get_all_env(routy),
 	
 	P = fun(Mod) ->
-			Mod:routes()
+			lists:map(
+						fun ({Route, Handlers}) -> 
+								{ok, Compiledroute} = re:compile(Route), 
+								{{Route, Compiledroute}, Handlers} 
+						end,
+						Mod:routes()
+						)
 		end,
 	
 	% TODO: routes need to be queried on demand, not created at start or app
@@ -94,9 +100,9 @@ out_routes(A) ->
 	{ok, Routes} = application:get_env(routy, routes),
 	
 	MatchingUrl = lists:dropwhile(
-								fun(Url) ->
+								fun({_, CompiledUrl}) ->
 
-										case re:run(A#arg.server_path, Url) of
+										case re:run(A#arg.server_path, CompiledUrl) of
 													nomatch -> true;
 													_ -> false
 										end
@@ -105,14 +111,12 @@ out_routes(A) ->
 								proplists:get_keys(Routes)
 								),
 
-	io:format("Matching urls: ~p~n", [MatchingUrl]),
-
 	case MatchingUrl of
 		[] ->
 			error_logger:error_report([{not_found, A#arg.server_path}]),
 			{status, 404};
-		[FirstMatchedUrl | _] ->
-			Methods = proplists:get_value(FirstMatchedUrl, Routes),
+		[{FirstMatchedUrl, FirstMatchedCompiledUrl} | _] ->
+			Methods = proplists:get_value({FirstMatchedUrl, FirstMatchedCompiledUrl} , Routes),
 			out_method(A, (A#arg.req)#http_request.method, {FirstMatchedUrl, Methods})
 	end.
 
