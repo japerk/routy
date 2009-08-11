@@ -1,6 +1,6 @@
 {application, routy, [
 	{description, "HTTP Request Routing"},
-	{vsn, "1.3"},
+	{vsn, "1.4"},
 	{mod, {routy, []}},
 	{registered, [routy_cache]},
 	{modules, [routy, routy_sup, routy_util]},
