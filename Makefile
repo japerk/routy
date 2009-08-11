@@ -2,6 +2,7 @@ ERL=erl
 
 all: src
 
+# TODO: this is where custom include paths can be defined using -I
 src: FORCE
 	@$(ERL) -pa ebin -make
 
