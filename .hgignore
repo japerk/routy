@@ -5,3 +5,6 @@ log/*
 *~
 *.beam
 test.spec
+*.swp
+*.swn
+*.swo

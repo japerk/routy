@@ -4,6 +4,8 @@
 %% @todo define prop as an edoc type
 -module(routy_util).
 
+-include("routy.hrl").
+
 -export([
 	encode_props/1,
 	encode_props/2,
@@ -16,7 +18,10 @@
 	render_tmpl/2,
 	compile_templates/1,
 	extract_named_subpatterns/1,
-	parse_url/2
+	parse_url/2,
+	make_args/2,
+	try_route/4,
+	http_error/2
 ]).
 
 %% @doc Encode url props.
@@ -139,3 +144,91 @@ parse_url(Url, UrlSpec) ->
 			_ -> []
 	end.
 	
+
+
+%%%%%%%%%%%%%
+%% routing %%
+%%%%%%%%%%%%%
+
+try_route(Method, Module, Function, Args) ->
+	Terms = [{method, Method}, {module, Module},
+			 {function, Function}, {args, Args}],
+	
+	try route(Method, Module, Function, Args) of
+		ok -> {status, 204}; % no content
+		Result -> Result
+	catch
+		throw:badrequest ->
+			error_logger:warning_report([badrequest | Terms]),
+			http_error(400); % bad request
+		throw:forbidden ->
+			error_logger:warning_report([forbidden | Terms]),
+			http_error(403); % forbidden
+		throw:notfound ->
+			error_logger:warning_report([notfound | Terms]),
+			http_error(404); % not found
+		throw:Reason ->
+			error_logger:error_report([{throw, Reason} | Terms]),
+			http_error(500);
+		exit:Reason ->
+			error_logger:error_report([{exit, Reason} | Terms]),
+			http_error(500);
+		error:undef ->
+			error_logger:error_report([{error, undef} | Terms]),
+			http_error(501); % not implemented
+		error:Reason ->
+			error_logger:error_report([{error, Reason} | Terms]),
+			http_error(500)
+	end.
+
+	
+% only cache if is a get request and caching is enabled
+route('GET', Module, Function, Args) ->
+	{ok, Cache} = application:get_env(routy, cache),
+	
+	if
+		Cache -> ?recall(Module, Function, Args);
+		true -> apply(Module, Function, Args)
+	end;
+route(_, Module, Function, Args) ->
+	apply(Module, Function, Args).
+
+
+http_error(Code) -> {status, Code}.
+
+http_error(Code, Term) ->
+	[{status, Code}, {content, "text/plain", routy_util:stringify(Term)}].
+
+%%%%%%%%%%%%%%%
+%% make args %%
+%%%%%%%%%%%%%%%
+
+make_args(Keys, Props) ->
+	F = fun(Key) ->
+			case make_arg(Key, Props) of
+				undefined -> throw(badarg);
+				Value -> Value
+			end
+		end,
+
+	lists:map(F, Keys).
+
+make_arg(props, Props) ->
+	Props;
+make_arg({Key, {Type, Default}}, Props) ->
+	case proplists:get_value(Key, Props) of
+		undefined -> Default;
+		Value -> convert(Value, Type)
+	end;
+make_arg({Key, Type}, Props) ->
+	convert(proplists:get_value(Key, Props), Type);
+make_arg(Key, Props) ->
+	proplists:get_value(Key, Props).
+
+convert(undefined, _) -> undefined;
+convert("true", bool) -> true;
+convert("false", bool) -> false;
+convert(Value, list) -> Value;
+convert(Value, integer) -> list_to_integer(Value);
+convert(Value, float) -> list_to_float(Value);
+convert(_, _) -> undefined.

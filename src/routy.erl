@@ -84,12 +84,7 @@ auth(_A, _Auth) ->
 %% @doc Yaws appmod out function. Returns Yaws compatible results.
 %% @spec out(A) -> Result
 out(A) ->
-	try authorized(A) of
-		true ->
-			out_routes(A);
-		false ->
-			error_logger:warning_report([{notauthorized, A}]),
-			{status, 401}
+	try out_routes(A)
 	catch
 		Err:Reason ->
 			error_logger:error_report([{Err, Reason}]),
@@ -98,7 +93,8 @@ out(A) ->
 
 out_routes(A) ->
 	{ok, Routes} = application:get_env(routy, routes),
-	
+
+	% Check if the request path match any of the registered routes
 	MatchingUrl = lists:dropwhile(
 								fun({_, CompiledUrl}) ->
 
@@ -117,146 +113,30 @@ out_routes(A) ->
 			{status, 404};
 		[{FirstMatchedUrl, FirstMatchedCompiledUrl} | _] ->
 			Methods = proplists:get_value({FirstMatchedUrl, FirstMatchedCompiledUrl} , Routes),
-			out_method(A, (A#arg.req)#http_request.method, {FirstMatchedUrl, Methods})
+			out_method(A, (A#arg.req)#http_request.method, Methods)
 	end.
 
-out_method(A, Method, {UrlSpec , Methods}) ->
+out_method(A, Method, Methods) ->
 	case proplists:get_value(Method, Methods) of
 		undefined ->
 			error_logger:error_report([{not_allowed, Method}, {methods, Methods}]),
 			{status, 405};
-		MFA ->
-			out_vars(A, Method, UrlSpec, MFA)
+		ListRequestHandlers ->
+			out_vars(A, Method, ListRequestHandlers)
 	end.
 
-out_vars(A, 'GET', UrlSpec, MFA) ->
-	try_args('GET', MFA, routy_util:parse_url(A#arg.server_path, UrlSpec) ++ yaws_api:parse_query(A));
-out_vars(A, 'POST', _, {Module, Function, json}) ->
-	case json:decode_string(binary_to_list(A#arg.clidata)) of
-		{error, Err} -> http_error(400, Err);
-		{ok, Json} -> try_route('POST', Module, Function, [Json])
-	end;
-out_vars(A, 'POST', UrlSpec, MFA) ->
-	try_args('POST', MFA, routy_util:parse_url(A#arg.server_path, UrlSpec) ++ yaws_api:parse_query(A) ++ yaws_api:parse_post(A));
-out_vars(_, Method, _, MFA) ->
-	error_logger:error_report([{not_implemented, Method}, MFA]),
+out_vars(A, Method, ListRequestHandlers) when Method =:= 'GET' orelse Method =:= 'POST' ->
+	try_args(A, Method, ListRequestHandlers);
+out_vars(_, Method, ListRequestHandlers) ->
+	error_logger:error_report([{not_implemented, Method}, ListRequestHandlers]),
 	{status, 501}.
 
-try_args(Method, {Module, Function, Keys}, Props) ->
-	try make_args(Keys, Props) of
-		Args -> try_route(Method, Module, Function, Args)
+try_args(A, _, [RequestHandler | ListRequestHandlers]) ->
+	try RequestHandler(A, ListRequestHandlers)
 	catch
 		throw:badarg ->
-			Report = [badarg, {module, Module}, {function, Function},
-					  {keys, Keys}, {props, Props}],
+			Report = [badarg, {functions, ListRequestHandlers}, {request, A} ],
 			error_logger:error_report(Report),
-			http_error(400, badarg)
+			routy_util:http_error(400, badarg)
 	end.
 
-%%%%%%%%%%%%%
-%% authkey %%
-%%%%%%%%%%%%%
-
-%% routy authkey is double base64 encode.
-%% step 1: generate digest from Salt + Secret + Client IP
-%% step 2: base64 encode digest as Hash
-%% step 3: base64 encode Salt:Hash as Authorization
-%% set authorization header to "Routy" Authorization
-
-authorized(A) ->
-	{ok, Auth} = application:get_env(routy, authkey),
-	not Auth orelse verify((A#arg.headers)#headers.other).
-
-verify(Headers) ->
-	{value, Authkey} = lists:keysearch("X-Authkey", 3, Headers),
-	Authorization = base64:decode_to_string(element(5, Authkey)),
-	{Salt, Hash} = estring:splitc(Authorization, $:),
-	{value, RealIp} = lists:keysearch("X-Real-Ip", 3, Headers),
-	{ok, Secret} = application:get_env(routy, secret),
-	Digest = erlang:md5(lists:append([Salt, Secret, element(5, RealIp)])),
-	Hash == base64:encode_to_string(Digest).
-
-%%%%%%%%%%%%%
-%% routing %%
-%%%%%%%%%%%%%
-
-try_route(Method, Module, Function, Args) ->
-	Terms = [{method, Method}, {module, Module},
-			 {function, Function}, {args, Args}],
-	
-	try route(Method, Module, Function, Args) of
-		ok -> {status, 204}; % no content
-		Result -> Result
-	catch
-		throw:badrequest ->
-			error_logger:warning_report([badrequest | Terms]),
-			http_error(400); % bad request
-		throw:forbidden ->
-			error_logger:warning_report([forbidden | Terms]),
-			http_error(403); % forbidden
-		throw:notfound ->
-			error_logger:warning_report([notfound | Terms]),
-			http_error(404); % not found
-		throw:Reason ->
-			error_logger:error_report([{throw, Reason} | Terms]),
-			http_error(500);
-		exit:Reason ->
-			error_logger:error_report([{exit, Reason} | Terms]),
-			http_error(500);
-		error:undef ->
-			error_logger:error_report([{error, undef} | Terms]),
-			http_error(501); % not implemented
-		error:Reason ->
-			error_logger:error_report([{error, Reason} | Terms]),
-			http_error(500)
-	end.
-
-% only cache if is a get request and caching is enabled
-route('GET', Module, Function, Args) ->
-	{ok, Cache} = application:get_env(routy, cache),
-	
-	if
-		Cache -> ?recall(Module, Function, Args);
-		true -> apply(Module, Function, Args)
-	end;
-route(_, Module, Function, Args) ->
-	apply(Module, Function, Args).
-
-http_error(Code) -> {status, Code}.
-
-http_error(Code, Term) ->
-	[{status, Code}, {content, "text/plain", routy_util:stringify(Term)}].
-
-%%%%%%%%%%%%%%%
-%% make args %%
-%%%%%%%%%%%%%%%
-
-make_args(Keys, Props) ->
-	F = fun(Key) ->
-			case make_arg(Key, Props) of
-				undefined -> throw(badarg);
-				Value -> Value
-			end
-		end,
-
-	lists:map(F, Keys).
-
-make_arg(props, Props) ->
-	Props;
-make_arg({Key, {Type, Default}}, Props) ->
-	case proplists:get_value(Key, Props) of
-		undefined -> Default;
-		Value -> convert(Value, Type)
-	end;
-make_arg({Key, Type}, Props) ->
-	convert(proplists:get_value(Key, Props), Type);
-make_arg(Key, Props) ->
-	proplists:get_value(Key, Props).
-
-convert(undefined, _) -> undefined;
-convert("true", bool) -> true;
-convert("false", bool) -> false;
-convert(Value, list) -> Value;
-convert(Value, integer) -> list_to_integer(Value);
-convert(Value, float) -> list_to_float(Value);
-convert(_, _) -> undefined.
