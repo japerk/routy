@@ -4,8 +4,8 @@
 -module(routy_handlers).
 
 
--include_lib("$YAWS_INC/include/yaws.hrl").
--include_lib("$YAWS_INC/include/yaws_api.hrl").
+-include_lib("yaws/include/yaws.hrl").
+-include_lib("yaws/include/yaws_api.hrl").
 
 
 -export([extract_args/2, echo/1, nop/2, authkey/2]).

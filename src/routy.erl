@@ -8,8 +8,8 @@
 -behaviour(application).
 
 -include("routy.hrl").
--include_lib("$YAWS_INC/include/yaws.hrl").
--include_lib("$YAWS_INC/include/yaws_api.hrl").
+-include_lib("yaws/include/yaws.hrl").
+-include_lib("yaws/include/yaws_api.hrl").
 
 -export([start/2, stop/1, config_change/3, behaviour_info/1]).
 -export([auth/2, out/1]).
