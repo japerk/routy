@@ -82,23 +82,23 @@ auth(_A, _Auth) ->
 %%%%%%%%%%%%
 
 %% @doc Yaws appmod out function. Returns Yaws compatible results.
-%% @spec out(A) -> Result
-out(A) ->
-	try out_routes(A)
+%% @spec out(Request) -> Result
+out(Request) ->
+	try out_routes(Request)
 	catch
 		Err:Reason ->
 			error_logger:error_report([{Err, Reason}]),
 			{status, 500}
 	end.
 
-out_routes(A) ->
+out_routes(Request) ->
 	{ok, Routes} = application:get_env(routy, routes),
 
 	% Check if the request path match any of the registered routes
 	MatchingUrl = lists:dropwhile(
 								fun({_, CompiledUrl}) ->
 
-										case re:run(A#arg.server_path, CompiledUrl) of
+										case re:run(Request#arg.server_path, CompiledUrl) of
 													nomatch -> true;
 													_ -> false
 										end
@@ -109,34 +109,25 @@ out_routes(A) ->
 
 	case MatchingUrl of
 		[] ->
-			error_logger:error_report([{not_found, A#arg.server_path}]),
+			error_logger:error_report([{not_found, Request#arg.server_path}]),
 			{status, 404};
 		[{FirstMatchedUrl, FirstMatchedCompiledUrl} | _] ->
 			Methods = proplists:get_value({FirstMatchedUrl, FirstMatchedCompiledUrl} , Routes),
-			out_method(A, (A#arg.req)#http_request.method, Methods)
+			out_method(Request, (Request#arg.req)#http_request.method, Methods)
 	end.
 
-out_method(A, Method, Methods) ->
+out_method(Request, Method, Methods) ->
 	case proplists:get_value(Method, Methods) of
 		undefined ->
 			error_logger:error_report([{not_allowed, Method}, {methods, Methods}]),
 			{status, 405};
 		ListRequestHandlers ->
-			out_vars(A, Method, ListRequestHandlers)
+			out_vars(Request, Method, ListRequestHandlers)
 	end.
 
-out_vars(A, Method, ListRequestHandlers) when Method =:= 'GET' orelse Method =:= 'POST' ->
-	try_args(A, Method, ListRequestHandlers);
+out_vars(Request, Method, ListRequestHandlers) when Method =:= 'GET' orelse Method =:= 'POST' ->
+	routy_util:try_route(Request, Method, ListRequestHandlers);
 out_vars(_, Method, ListRequestHandlers) ->
 	error_logger:error_report([{not_implemented, Method}, ListRequestHandlers]),
 	{status, 501}.
-
-try_args(A, _, [RequestHandler | ListRequestHandlers]) ->
-	try RequestHandler(A, ListRequestHandlers)
-	catch
-		throw:badarg ->
-			Report = [badarg, {functions, ListRequestHandlers}, {request, A} ],
-			error_logger:error_report(Report),
-			routy_util:http_error(400, badarg)
-	end.
 

@@ -8,7 +8,9 @@
 -include_lib("yaws/include/yaws_api.hrl").
 
 
--export([extract_args/2, echo/1, nop/2, authkey/2]).
+-export([extract_args/2, extract_all_args/2, echo/1, nop/2, authkey/2]).
+-export([redirect_template/2, redirect_template_from_templatedir/2]).
+-export([redirect_template_fun/2, redirect_template_from_templatedir_fun/2]).
 
 
 
@@ -17,7 +19,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% This request handler factory returns a request handler
-%% which will extract the required parameters and called the function
+%% which will extract the required parameters and call the function
 %% reference passed as a parameter
 
 extract_args(UrlSpec, {Module, Function, ListParameters}) ->
@@ -26,11 +28,60 @@ extract_args(UrlSpec, {Module, Function, ListParameters}) ->
 							'GET'  -> yaws_api:parse_query(Req);
 							'POST' -> yaws_api:parse_post(Req)
 					end,
-
 			ParsedArgs = routy_util:make_args(ListParameters, Args ++ routy_util:parse_url(Req#arg.server_path, UrlSpec)),
-			routy_util:try_route((Req#arg.req)#http_request.method, Module, Function, ParsedArgs)
+			routy_util:try_route(Req, (Req#arg.req)#http_request.method, Module, Function, ParsedArgs)
 	end.
 
+
+%% This request handler factory returns a request handler
+%% which will extract all parameters and call the function
+%% reference passed as a parameter
+
+extract_all_args(UrlSpec, {Module, Function}) ->
+	fun (Req, _) ->
+			Args = case (Req#arg.req)#http_request.method of
+							'GET'  -> yaws_api:parse_query(Req);
+							'POST' -> yaws_api:parse_post(Req)
+					end,
+
+			ParsedArgs = Args ++ routy_util:parse_url(Req#arg.server_path, UrlSpec),
+			routy_util:try_route((Req#arg.req)#http_request.method, Module, Function, [ParsedArgs])
+	end.
+
+
+
+redirect_template_fun(ErlyDTLTemplateFilename, ParamsCreator) ->
+	% Compile the template
+	Template = list_to_atom(binary_to_list(term_to_binary(erlang:phash2(ErlyDTLTemplateFilename)))),
+	erlydtl:compile(ErlyDTLTemplateFilename, Template),
+					
+	fun (Req, _) ->
+				{ok, RenderedPage} = Template:render(ParamsCreator()),
+				[{status, 200}, {content, "text/html", RenderedPage}]
+	end.
+
+
+redirect_template_from_templatedir_fun(ErlyDTLTemplateName, ParamsCreator) ->
+	{ok, TemplateDir} = application:get_env(routy, templatedir),
+
+	redirect_template_fun(TemplateDir ++ ErlyDTLTemplateName, ParamsCreator).
+
+
+
+redirect_template(ErlyDTLTemplateFilename, ParamsCreator) ->
+	% Compile the template
+	Template = list_to_atom(binary_to_list(term_to_binary(erlang:phash2(ErlyDTLTemplateFilename)))),
+	ok = erlydtl:compile(ErlyDTLTemplateFilename, Template),
+					
+	{ok, RenderedPage} = Template:render(ParamsCreator()),
+
+	[{status, 200}, {content, "text/html", RenderedPage}].
+
+
+
+redirect_template_from_templatedir(ErlyDTLTemplateName, ParamsCreator) ->
+	{ok, TemplateDir} = application:get_env(routy, templatedir),
+	redirect_template(TemplateDir ++ ErlyDTLTemplateName, ParamsCreator).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -56,8 +107,6 @@ echo(Message) ->
 
 nop(Req, [RH| RequestHandlers]) ->
 	RH(Req, RequestHandlers).
-
-
 
 
 %%%%%%%%%%%%%%%%%%%%%

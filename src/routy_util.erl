@@ -20,7 +20,8 @@
 	extract_named_subpatterns/1,
 	parse_url/2,
 	make_args/2,
-	try_route/4,
+	try_route/3,
+	try_route/5,
 	http_error/2
 ]).
 
@@ -150,14 +151,30 @@ parse_url(Url, UrlSpec) ->
 %% routing %%
 %%%%%%%%%%%%%
 
-try_route(Method, Module, Function, Args) ->
+try_route(Request, Method, Module, Function, ParsedArgs) ->
 	Terms = [{method, Method}, {module, Module},
-			 {function, Function}, {args, Args}],
-	
-	try route(Method, Module, Function, Args) of
+			{function, Function}, {args, ParsedArgs}],
+	Fun = fun() ->	apply(Module, Function, ParsedArgs) end,
+
+	route(Fun, Terms).
+
+try_route(Request, Method, [RequestHandler | RemainingRequestHandlers] = ListRequestHandlers) ->
+	Terms = [{method, Method}, {request, Request}, {request_handlers, ListRequestHandlers}],
+	Fun = fun() ->	RequestHandler(Request, RemainingRequestHandlers) end,
+
+	route(Fun, Terms).
+
+
+route(Route, Terms) when is_function(Route, 0) ->
+
+	try Route() of
 		ok -> {status, 204}; % no content
 		Result -> Result
 	catch
+		throw:badarg ->
+			Report = [badarg, Terms],
+			error_logger:error_report(Report),
+			routy_util:http_error(400, badarg);
 		throw:badrequest ->
 			error_logger:warning_report([badrequest | Terms]),
 			http_error(400); % bad request
@@ -182,18 +199,6 @@ try_route(Method, Module, Function, Args) ->
 	end.
 
 	
-% only cache if is a get request and caching is enabled
-route('GET', Module, Function, Args) ->
-	{ok, Cache} = application:get_env(routy, cache),
-	
-	if
-		Cache -> ?recall(Module, Function, Args);
-		true -> apply(Module, Function, Args)
-	end;
-route(_, Module, Function, Args) ->
-	apply(Module, Function, Args).
-
-
 http_error(Code) -> {status, Code}.
 
 http_error(Code, Term) ->
