@@ -7,16 +7,34 @@
 -include_lib("yaws/include/yaws.hrl").
 -include_lib("yaws/include/yaws_api.hrl").
 
-
--export([extract_args/2, extract_all_args/2, echo/1, nop/2, authkey/2]).
+-export([decode_json/2]).
+-export([extract_args/1, extract_args/2, extract_all_args/2, echo/1, nop/2, authkey/2]).
 -export([redirect_template/2, redirect_template_from_templatedir/2]).
 -export([redirect_template_fun/2, redirect_template_from_templatedir_fun/2]).
 
-
+decode_json(Module, Function) ->
+	fun (Req, _) ->
+		case json:decode_string(binary_to_list(Req#arg.clidata)) of
+			{error, Err} ->
+				throw(badarg);
+			{ok, Json} ->
+				routy_util:try_route(Req, (Req#arg.req)#http_request.method, Module, Function, [Json])
+		end
+	end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% extract_args handler factory %%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+extract_args({Module, Function, ListParameters}) ->
+	fun (Req, _) ->
+		Args = case (Req#arg.req)#http_request.method of
+					'GET'  -> yaws_api:parse_query(Req);
+					'POST' -> yaws_api:parse_post(Req)
+				end,
+		ParsedArgs = routy_util:make_args(ListParameters, Args),
+		routy_util:try_route(Req, (Req#arg.req)#http_request.method, Module, Function, ParsedArgs)
+	end.
 
 %% This request handler factory returns a request handler
 %% which will extract the required parameters and call the function
@@ -55,7 +73,7 @@ redirect_template_fun(ErlyDTLTemplateFilename, ParamsCreator) ->
 	Template = list_to_atom(binary_to_list(term_to_binary(erlang:phash2(ErlyDTLTemplateFilename)))),
 	erlydtl:compile(ErlyDTLTemplateFilename, Template),
 					
-	fun (Req, _) ->
+	fun (_Req, _) ->
 				{ok, RenderedPage} = Template:render(ParamsCreator()),
 				[{status, 200}, {content, "text/html", RenderedPage}]
 	end.

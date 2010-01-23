@@ -1,8 +1,8 @@
 {application, routy, [
 	{description, "HTTP Request Routing"},
-	{vsn, "1.4"},
+	{vsn, "1.5"},
 	{mod, {routy, []}},
-	{registered, [routy_cache]},
+	{registered, []},
 	{modules, [routy, routy_sup, routy_util]},
 	{applications, [kernel, stdlib, elib]},
 	{env, [
