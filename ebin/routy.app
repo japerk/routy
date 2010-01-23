@@ -3,7 +3,7 @@
 	{vsn, "1.5"},
 	{mod, {routy, []}},
 	{registered, []},
-	{modules, [routy, routy_sup, routy_util]},
+	{modules, [routy, routy_sup, routy_util, routy_handlers]},
 	{applications, [kernel, stdlib, elib]},
 	{env, [
 		{id, "routy"}, {server_name, "localhost"}, {logdir, "."}, {port, 8000},

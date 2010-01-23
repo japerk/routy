@@ -1,7 +1,7 @@
 {"1.5", [
 	{"1.4", [
 		{load_module, routy_util},
-		{load_module, routy_handlers},
+		{add_module, routy_handlers},
 		{load_module, routy},
 		{apply, {routy, config_change, [[],[],[]]}}
 	]},
@@ -12,8 +12,8 @@
 ], [
 	{"1.4", [
 		{load_module, routy_util},
-		{load_module, routy_handlers},
 		{load_module, routy},
+		{delete_module, routy_handlers},
 		{apply, {routy, config_change, [[],[],[]]}}
 	]},
 	{"1.3", [
