@@ -62,6 +62,7 @@ config_change(_Changed, _New, _Removed) ->
 		 {listen, {0, 0, 0, 0}}, {port, proplists:get_value(port, Props)},
 		 {servername, proplists:get_value(server_name, Props)},
 		 {authdirs, Auths},
+		 {ssl, proplists:get_value(ssl, Props)},
 		 {appmods, [{"/", routy}]}],
 	
 	application:stop(yaws),
