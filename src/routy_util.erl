@@ -22,8 +22,15 @@
 	make_args/2,
 	try_route/3,
 	try_route/5,
-	http_error/2
+	http_error/2,
+	mime_type/1
 ]).
+
+
+%% @doc Returns mime type from a file name.
+%% @spec mime_type(string()) -> string()
+mime_type(FileName) ->
+	yaws_api:mime_type(FileName).
 
 %% @doc Encode url props.
 %% @spec encode_props([Prop::term()]) -> string()
