@@ -33,7 +33,7 @@ config_change(_Changed, _New, _Removed) ->
 	
 	P = fun(Mod) ->
 			lists:map(
-						fun ({Route, Handlers}) -> 
+						fun ({Route, Handlers}) ->
 								{ok, Compiledroute} = re:compile(Route), 
 								{{Route, Compiledroute}, Handlers} 
 						end,
@@ -98,7 +98,6 @@ out_routes(Request) ->
 	% Check if the request path match any of the registered routes
 	MatchingUrl = lists:dropwhile(
 								fun({_, CompiledUrl}) ->
-
 										case re:run(Request#arg.server_path, CompiledUrl) of
 													nomatch -> true;
 													_ -> false
