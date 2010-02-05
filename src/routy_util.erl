@@ -21,9 +21,16 @@
 	parse_url/2,
 	make_args/2,
 	try_route/3,
-	try_route/5,
-	http_error/2
+	try_route/4,
+	http_error/2,
+	mime_type/1
 ]).
+
+
+%% @doc Returns mime type from a file name.
+%% @spec mime_type(string()) -> string()
+mime_type(FileName) ->
+	yaws_api:mime_type(FileName).
 
 %% @doc Encode url props.
 %% @spec encode_props([Prop::term()]) -> string()
@@ -109,7 +116,6 @@ compile_templates(App) when is_atom(App) ->
 	
 	F = fun(Template) ->
 			File = filename:join(Docroot, atom_to_list(Template)),
-			io:format("compiling ~s to ~p~n", [File, Template]),
 			ok = erlydtl_compiler:compile(File, Template, Opts)
 		end,
 	
@@ -151,7 +157,7 @@ parse_url(Url, UrlSpec) ->
 %% routing %%
 %%%%%%%%%%%%%
 
-try_route(Request, Method, Module, Function, ParsedArgs) ->
+try_route(Method, Module, Function, ParsedArgs) ->
 	Terms = [{method, Method}, {module, Module},
 			{function, Function}, {args, ParsedArgs}],
 	Fun = fun() ->	apply(Module, Function, ParsedArgs) end,

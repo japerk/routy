@@ -47,7 +47,7 @@ extract_args(UrlSpec, {Module, Function, ListParameters}) ->
 							'POST' -> yaws_api:parse_post(Req)
 					end,
 			ParsedArgs = routy_util:make_args(ListParameters, Args ++ routy_util:parse_url(Req#arg.server_path, UrlSpec)),
-			routy_util:try_route(Req, (Req#arg.req)#http_request.method, Module, Function, ParsedArgs)
+			routy_util:try_route((Req#arg.req)#http_request.method, Module, Function, ParsedArgs)
 	end.
 
 
@@ -73,7 +73,7 @@ redirect_template_fun(ErlyDTLTemplateFilename, ParamsCreator) ->
 	Template = list_to_atom(binary_to_list(term_to_binary(erlang:phash2(ErlyDTLTemplateFilename)))),
 	erlydtl:compile(ErlyDTLTemplateFilename, Template),
 					
-	fun (_Req, _) ->
+	fun (_, _) ->
 				{ok, RenderedPage} = Template:render(ParamsCreator()),
 				[{status, 200}, {content, "text/html", RenderedPage}]
 	end.
