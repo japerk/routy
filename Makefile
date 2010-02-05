@@ -1,15 +1,19 @@
 ERL=erl
+LIBDIR=$(shell erl -eval 'io:format("~s~n", [code:lib_dir()])' -s init stop -noshell)
 
 all: src
 
 # TODO: this is where custom include paths can be defined using -I
 src: FORCE
-	$(ERL) -pa ebin -make
+	@$(ERL) -pa ebin -make
 
-check: src
-	@dialyzer -q -r . -I include/ \
-		-I $(ERL_LIBS)/test_server*/include/ \
-		-I $(ERL_LIBS)/common_test*/include/
+plt:
+	@dialyzer --build_plt --output_plt .plt -q -r . -I include/
+
+check: all
+	@dialyzer --check_plt --plt .plt -q -r . -I include/\
+		-I $(LIBDIR)/test_server*/include/ \
+		-I $(LIBDIR)/common_test*/include/
 
 test: test.spec src FORCE
 	@run_test -pa $(PWD)/ebin -spec test.spec

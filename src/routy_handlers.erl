@@ -15,10 +15,10 @@
 decode_json(Module, Function) ->
 	fun (Req, _) ->
 		case json:decode_string(binary_to_list(Req#arg.clidata)) of
-			{error, Err} ->
+			{error, _Err} ->
 				throw(badarg);
 			{ok, Json} ->
-				routy_util:try_route(Req, (Req#arg.req)#http_request.method, Module, Function, [Json])
+				routy_util:try_route((Req#arg.req)#http_request.method, Module, Function, [Json])
 		end
 	end.
 
@@ -33,7 +33,7 @@ extract_args({Module, Function, ListParameters}) ->
 					'POST' -> yaws_api:parse_post(Req)
 				end,
 		ParsedArgs = routy_util:make_args(ListParameters, Args),
-		routy_util:try_route(Req, (Req#arg.req)#http_request.method, Module, Function, ParsedArgs)
+		routy_util:try_route((Req#arg.req)#http_request.method, Module, Function, ParsedArgs)
 	end.
 
 %% This request handler factory returns a request handler
