@@ -31,15 +31,12 @@ config_change(_Changed, _New, _Removed) ->
 	{ok, ID} = application:get_env(routy, id),
 	Props = application:get_all_env(routy),
 	
-	P = fun(Mod) ->
-			lists:map(
-						fun ({Route, Handlers}) ->
-								{ok, Compiledroute} = re:compile(Route), 
-								{{Route, Compiledroute}, Handlers} 
-						end,
-						Mod:routes()
-						)
+	R = fun({Route, Handlers}) ->
+			{ok, Compiledroute} = re:compile(Route), 
+			{{Route, Compiledroute}, Handlers} 
 		end,
+	
+	P = fun(Mod) -> lists:map(R, Mod:routes()) end,
 	
 	% TODO: routes need to be queried on demand, not created at start or app
 	% change, since routing apis may change in other apps without the routy
@@ -53,21 +50,18 @@ config_change(_Changed, _New, _Removed) ->
 	{ok, Authdirs} = application:get_env(routy, authdirs),
 	{ok, Realm} = application:get_env(routy, realm),
 	Auths = [#auth{dir=[Dir], realm=Realm, type="OAuth", mod=?MODULE} || Dir <- Authdirs],
-	
 	% yaws global config
-	G = [{auth_log, false}, {copy_errlog, false}, {id, ID}, {yaws, ID},
-		 {logdir, proplists:get_value(logdir, Props)}],
+	G1 = yaws_config:make_default_gconf(false, ID),
+	G2 = G1#gconf{logdir=proplists:get_value(logdir, Props)},
 	% yaws server config
-	S = [{access_log, false}, {deflate, true}, {dir_listings, false},
-		 {listen, {0, 0, 0, 0}}, {port, proplists:get_value(port, Props)},
-		 {servername, proplists:get_value(server_name, Props)},
-		 {authdirs, Auths},
-		 {ssl, proplists:get_value(ssl, Props)},
-		 {appmods, [{"/", routy}]}],
+	S1 = yaws_config:make_default_sconf(),
+	S2 = S1#sconf{
+		docroot=".", listen={0, 0, 0, 0}, port=proplists:get_value(port, Props),
+		servername=proplists:get_value(server_name, Props),
+		authdirs=Auths, appmods=[{"/", routy}]
+	},
 	
-	application:stop(yaws),
-	application:unload(yaws),
-	yaws:start_embedded(".", S, G).
+	yaws_api:setconf(G2, [[S2]]).
 
 behaviour_info(callbacks) -> [{routes, 0}].
 
